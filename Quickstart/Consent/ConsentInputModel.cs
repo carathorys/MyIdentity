@@ -4,7 +4,7 @@
 
 using System.Collections.Generic;
 
-namespace IdentityServer4InMem
+namespace MyIdentityServer
 {
     public class ConsentInputModel
     {

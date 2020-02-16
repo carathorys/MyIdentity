@@ -4,7 +4,7 @@
 
 using System;
 
-namespace IdentityServer4InMem
+namespace MyIdentityServer
 {
     public class AccountOptions
     {

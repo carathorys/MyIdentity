@@ -4,7 +4,7 @@
 
 using System.ComponentModel.DataAnnotations;
 
-namespace IdentityServer4InMem
+namespace MyIdentityServer
 {
     public class LoginInputModel
     {

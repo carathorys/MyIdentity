@@ -19,7 +19,7 @@ using Microsoft.AspNetCore.Authentication;
 using IdentityServer4.Events;
 using IdentityServer4.Extensions;
 
-namespace IdentityServer4InMem
+namespace MyIdentityServer
 {
     /// <summary>
     /// This sample controller implements a typical login/logout/provision workflow for local and external accounts.

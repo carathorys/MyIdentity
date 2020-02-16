@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace IdentityServer4InMem
+namespace MyIdentityServer
 {
     public class ConsentService
     {

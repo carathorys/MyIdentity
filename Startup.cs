@@ -4,16 +4,38 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using IdentityServer4;
+using IdentityServer4.EntityFramework;
+using IdentityServer4.EntityFramework.DbContexts;
+using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using MyIdentityServer.Configuration;
+using IdentityServer4.EntityFramework.Mappers;
+using Microsoft.Extensions.Configuration;
+using IdentityServer4.Validation;
+using Microsoft.EntityFrameworkCore.Extensions;
+using System.Reflection;
 
-namespace IdentityServer4InMem
+namespace MyIdentityServer
 {
     public class Startup
     {
         public IHostingEnvironment Environment { get; }
+        public IConfigurationRoot Configuration { get; }
 
-        public Startup(ILoggerFactory loggerFactory, IHostingEnvironment environment)
+        public Startup(ILoggerFactory loggerFactory, IHostingEnvironment env)
         {
-            Environment = environment;
+            Environment = env;
+
+            var builder = new ConfigurationBuilder()
+            .SetBasePath(env.ContentRootPath)
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+            .AddJsonFile($"appsettings.{env.EnvironmentName}.json", optional: true);
+
+            if (env.IsDevelopment())
+            {
+                // For more details on using the user secret store see https://go.microsoft.com/fwlink/?LinkID=532709
+                builder.AddUserSecrets<Startup>();
+            }
 
             var serilog = new LoggerConfiguration()
                 .MinimumLevel.Verbose()
@@ -29,21 +51,32 @@ namespace IdentityServer4InMem
                     { "System", LogLevel.Warning },
                 })
                 .AddSerilog(serilog.CreateLogger());
+
+
+            builder.AddEnvironmentVariables();
+            Configuration = builder.Build();
         }
 
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddMvc();
 
+            var migrationsAssembly = typeof(Startup).GetTypeInfo().Assembly.GetName().Name;
+
             services.AddIdentityServer()
                 .AddDeveloperSigningCredential()
-                .AddInMemoryIdentityResources(Config.GetIdentityResources())
-                .AddInMemoryApiResources(Config.GetApis())
-                .AddInMemoryClients(Config.GetClients())
-                .AddTestUsers(TestUsers.Users);
+                .AddSecretParser<ClientAssertionSecretParser>()
+                .AddSecretValidator<PrivateKeyJwtSecretValidator>()
+                .AddConfigurationStore(builder =>
+                builder.UseSqlServer(Configuration.GetConnectionString("ConfigDbContext"),
+                    options => options.MigrationsAssembly(migrationsAssembly)))
+                .AddOperationalStore(builder =>
+                    builder.UseSqlServer(Configuration.GetConnectionString("OperationalDbContext"),
+                        options => options.MigrationsAssembly(migrationsAssembly)));
+
         }
 
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory)
+        public void Configure(IApplicationBuilder app, IHostingEnvironment env, IApplicationLifetime applicationLifetime, ILoggerFactory loggerFactory)
         {
             if (Environment.IsDevelopment())
             {
@@ -51,19 +84,47 @@ namespace IdentityServer4InMem
             }
 
             app.UseIdentityServer();
+            app.UseIdentityServerEfTokenCleanup(applicationLifetime);
 
-            // middleware for google authentication
-            // must use http://localhost:5000 for this configuration to work
-            app.UseGoogleAuthentication(new GoogleOptions
+            using (var serviceScope = app.ApplicationServices.GetRequiredService<IServiceScopeFactory>().CreateScope())
             {
-                AuthenticationScheme = "Google",
-                SignInScheme = IdentityServerConstants.ExternalCookieAuthenticationScheme,
-                ClientId = "708996912208-9m4dkjb5hscn7cjrn5u0r4tbgkbj1fko.apps.googleusercontent.com",
-                ClientSecret = "wdfPY6t8H8cecgjlxud__4Gh"
-            });
+                serviceScope.ServiceProvider.GetService<ConfigurationDbContext>().Database.Migrate();
+                serviceScope.ServiceProvider.GetService<PersistedGrantDbContext>().Database.Migrate();
+                EnsureSeedData(serviceScope.ServiceProvider.GetService<ConfigurationDbContext>());
+            }
 
             app.UseStaticFiles();
             app.UseMvcWithDefaultRoute();
+        }
+
+        private static void EnsureSeedData(ConfigurationDbContext context)
+        {
+            if (!context.Clients.Any())
+            {
+                foreach (var client in Clients.Get().ToList())
+                {
+                    context.Clients.Add(client.ToEntity());
+                }
+                context.SaveChanges();
+            }
+
+            if (!context.IdentityResources.Any())
+            {
+                foreach (var resource in Resources.GetIdentityResources().ToList())
+                {
+                    context.IdentityResources.Add(resource.ToEntity());
+                }
+                context.SaveChanges();
+            }
+
+            if (!context.ApiResources.Any())
+            {
+                foreach (var resource in Resources.GetApiResources().ToList())
+                {
+                    context.ApiResources.Add(resource.ToEntity());
+                }
+                context.SaveChanges();
+            }
         }
     }
 }

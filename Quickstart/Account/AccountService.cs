@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Http;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace IdentityServer4InMem
+namespace MyIdentityServer
 {
     public class AccountService
     {
